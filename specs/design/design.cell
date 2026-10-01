@@ -1,0 +1,14 @@
+title Equipment Loans
+
+component equipment-webapp as "Equipment Loans" web-application
+component equipment-api as "Equipment API" service
+component equipment-db as "Equipment Database" database
+
+east user-auth as "Thunder Auth" identity-server
+
+west -> equipment-webapp
+
+equipment-webapp -> equipment-api
+equipment-webapp -> user-auth
+equipment-api -> user-auth
+equipment-api -> equipment-db

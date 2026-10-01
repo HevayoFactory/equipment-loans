@@ -27,3 +27,4 @@ See [Product-wide](product-wide.md).
 
 - Automatic reminder notifications (email, SMS, etc.) for overdue loans — the office manager checks a dashboard instead.
 - Staff self-registration — accounts are created by the office manager.
+

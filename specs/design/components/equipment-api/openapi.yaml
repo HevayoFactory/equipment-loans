@@ -1,0 +1,391 @@
+openapi: 3.0.3
+info:
+  title: Equipment API
+  version: 0.1.0
+  description: Equipment catalog and loan lifecycle for the office equipment tracker.
+servers:
+  - url: /
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: /oauth2/authorize
+          tokenUrl: /oauth2/token
+          scopes:
+            equipment:manage: Add, edit and retire equipment
+            loans:borrow: Borrow an available item
+            loans:read: The caller's own loans
+            loans:return: Mark the caller's own loan returned
+            loans:read-all: Every loan currently out
+            loans:return-any: Mark any loan returned
+            loans:extend: Extend a loan's due date
+  schemas:
+    Equipment:
+      type: object
+      required: [id, name, category, identifier, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [Laptop, Projector, Camera, Other] }
+        identifier: { type: string, description: Asset tag or serial number }
+        status: { type: string, enum: [available, on-loan, retired] }
+    EquipmentInput:
+      type: object
+      required: [name, category, identifier]
+      properties:
+        name: { type: string }
+        category: { type: string, enum: [Laptop, Projector, Camera, Other] }
+        identifier: { type: string }
+    EquipmentList:
+      type: object
+      required: [count, data]
+      properties:
+        count: { type: integer, description: total matching items }
+        next: { type: string, nullable: true, description: relative URI of the next page }
+        previous: { type: string, nullable: true, description: relative URI of the previous page }
+        data: { type: array, items: { $ref: '#/components/schemas/Equipment' } }
+    Loan:
+      type: object
+      required: [id, equipmentId, borrowerId, borrowedAt, dueAt, returnedAt, overdue]
+      properties:
+        id: { type: string }
+        equipmentId: { type: string }
+        borrowerId: { type: string }
+        borrowedAt: { type: string, format: date-time }
+        dueAt: { type: string, format: date }
+        returnedAt: { type: string, format: date-time, nullable: true }
+        overdue: { type: boolean, description: true when returnedAt is null and dueAt has passed }
+    LoanInput:
+      type: object
+      required: [equipmentId, dueAt]
+      properties:
+        equipmentId: { type: string }
+        dueAt: { type: string, format: date }
+    LoanList:
+      type: object
+      required: [count, data]
+      properties:
+        count: { type: integer, description: total matching items }
+        next: { type: string, nullable: true, description: relative URI of the next page }
+        previous: { type: string, nullable: true, description: relative URI of the previous page }
+        data: { type: array, items: { $ref: '#/components/schemas/Loan' } }
+    LoanDueDateInput:
+      type: object
+      required: [dueAt]
+      properties:
+        dueAt: { type: string, format: date }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer, description: HTTP or application error code }
+        message: { type: string, description: short human-readable label }
+        description: { type: string, description: detailed explanation }
+        moreInfo: { type: string, description: URI to documentation }
+security:
+  - oauth2: []
+paths:
+  /equipment:
+    get:
+      operationId: listEquipment
+      summary: Browse the equipment catalog (every item)
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: category
+          in: query
+          schema: { type: string, enum: [Laptop, Projector, Camera, Other] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [available, on-loan, retired] }
+      responses:
+        '200':
+          description: Matching equipment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EquipmentList' }
+    post:
+      operationId: addEquipment
+      summary: Add a new piece of equipment
+      security:
+        - oauth2: [equipment:manage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EquipmentInput' }
+      responses:
+        '201':
+          description: Equipment added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Equipment' }
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /equipment/{equipmentId}:
+    get:
+      operationId: getEquipment
+      summary: An equipment item's details
+      security: []
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The equipment item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Equipment' }
+        '404':
+          description: No such equipment item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      operationId: updateEquipment
+      summary: Edit an equipment item's details
+      security:
+        - oauth2: [equipment:manage]
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EquipmentInput' }
+      responses:
+        '200':
+          description: Equipment updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Equipment' }
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No such equipment item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /equipment/{equipmentId}/retire:
+    post:
+      operationId: retireEquipment
+      summary: Retire an equipment item so it can no longer be borrowed
+      security:
+        - oauth2: [equipment:manage]
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Equipment retired
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Equipment' }
+        '404':
+          description: No such equipment item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /me/loans:
+    get:
+      operationId: listMyLoans
+      summary: The caller's own current and past loans
+      security:
+        - oauth2: [loans:read]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: The caller's loans
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoanList' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      operationId: borrowEquipment
+      summary: Borrow an available item, choosing a due date
+      security:
+        - oauth2: [loans:borrow]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoanInput' }
+      responses:
+        '201':
+          description: Loan created, item marked on-loan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Loan' }
+        '400':
+          description: Item is not available, or the due date is invalid
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /me/loans/{loanId}/return:
+    post:
+      operationId: returnMyLoan
+      summary: Mark the caller's own loan returned
+      security:
+        - oauth2: [loans:return]
+      parameters:
+        - name: loanId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Loan closed, item marked available
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Loan' }
+        '404':
+          description: No such loan for the caller
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /loans:
+    get:
+      operationId: listOpenLoans
+      summary: Every loan currently out, across all staff, with overdue flagged
+      security:
+        - oauth2: [loans:read-all]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: overdue
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Open loans
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoanList' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /loans/{loanId}/return:
+    post:
+      operationId: returnAnyLoan
+      summary: Mark any loan returned
+      security:
+        - oauth2: [loans:return-any]
+      parameters:
+        - name: loanId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Loan closed, item marked available
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Loan' }
+        '404':
+          description: No such loan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /loans/{loanId}:
+    patch:
+      operationId: extendLoan
+      summary: Extend a loan's due date
+      security:
+        - oauth2: [loans:extend]
+      parameters:
+        - name: loanId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoanDueDateInput' }
+      responses:
+        '200':
+          description: Due date updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Loan' }
+        '400':
+          description: Invalid due date
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No such loan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
