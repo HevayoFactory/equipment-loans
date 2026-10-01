@@ -1,0 +1,4 @@
+apiVersion = "agentic-engineer/v1"
+name = "equipment-loans"
+createdAt = "2026-10-01T11:29:03Z"
+idea = "A small web app for our office to track who has borrowed shared equipment (laptops, projectors, cameras): staff borrow and return items, and the office manager sees what is out and overdue."
